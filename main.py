@@ -233,7 +233,7 @@ if __name__ == "__main__":
 ከላይ ባለው ኮድ ውስጥ፣ መስመር 23 ላይ፣ የኔን የቻናል ስም አስገብቻለሁ። አንተ **የራስህን የቻናል username ማስገባት አለብህ።**
 ```python
 # መስመር 23
-FORCE_SUB_CHANNEL = "@moonsmsinfo" # ⚠️ ይህንን በራስህ ቻናል ቀይረው!
+FORCE_SUB_CHANNEL = "@skyfounders" # ⚠️ ይህንን በራስህ ቻናል ቀይረው!
 import logging
 import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
@@ -470,4 +470,5 @@ if __name__ == "__main__":
 ```python
 # መስመር 23
 FORCE_SUB_CHANNEL = "@Skyfounders" # ⚠️ ይህንን በራስህ ቻናል ቀይረው!
+
 
