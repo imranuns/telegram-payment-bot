@@ -88,7 +88,6 @@ async def check_subscription_callback(update: Update, context: ContextTypes.DEFA
     await query.answer()
     if await is_user_subscribed(query.from_user.id, context):
         await query.message.delete()
-        # **FIXED**: Directly send the main menu to the user
         keyboard = [
             [KeyboardButton("🔵 Telegram"), KeyboardButton("⚫️ TikTok")],
             [KeyboardButton("🔴 YouTube"), KeyboardButton("🟣 Instagram")]
@@ -124,13 +123,9 @@ async def platform_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
 async def service_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     service_text = update.message.text
-    if service_text == BACK_BUTTON:
-        return await start_bot(update, context)
-
     service = service_text.lower().replace('👍 ', '').replace('👁 ', '').replace('👥 ', '').replace('❤️ ', '')
     context.user_data['service'] = service
     platform = context.user_data['platform']
-    # **FIXED**: Removed .replace(' ', '_') to correctly match keys like "post view"
     package_prices = PRICES.get(platform, {}).get(service, {})
     
     if not package_prices:
@@ -144,13 +139,11 @@ async def service_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     return PACKAGE_MENU
 
 async def package_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    # This function is now only for forward navigation
     try:
         parts = update.message.text.split(' ')
         amount = parts[0]
         service = context.user_data['service']
         platform = context.user_data['platform']
-        # **FIXED**: Removed .replace(' ', '_')
         if amount not in PRICES[platform][service]:
             raise ValueError("Invalid package selected")
         context.user_data['amount'] = amount
@@ -170,7 +163,6 @@ async def package_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     return AWAITING_INPUT
 
 async def awaiting_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    # This function is now only for forward navigation
     user_input = update.message.text
     platform = context.user_data['platform']
     
@@ -184,7 +176,6 @@ async def awaiting_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     context.user_data['user_input'] = user_input
     service = context.user_data['service']
     amount = context.user_data['amount']
-    # **FIXED**: Removed .replace(' ', '_')
     price = PRICES[platform][service][amount]
     
     input_type = "Post ሊንክ" if platform == "telegram" else "Account"
@@ -198,11 +189,6 @@ async def awaiting_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     return CONFIRMATION
 
 async def confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    if update.message.text != "✅ አረጋግጥ":
-        # If user didn't press confirm, assume it's a mistake and stay
-        return CONFIRMATION
-        
-    # **FIXED**: Removed .replace(' ', '_')
     price = PRICES[context.user_data['platform']][context.user_data['service']][context.user_data['amount']]
     payment_info = (f"🏦 **የባንክ መረጃዎች**\n\n"
                     f"- **የባንክ ስም:** CBE\n"
@@ -223,13 +209,11 @@ async def awaiting_proof(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                     f"❗️ትዕዛዝዎ እንደተጠናቀቀ የማረጋገጫ መልዕክት ይደርሶታል")
     await update.message.reply_text(user_message)
     
-    # Send main menu again to the user
     await start_bot(update, context)
     
     platform = context.user_data.get('platform', 'N/A')
     service = context.user_data.get('service', 'N/A')
     amount = context.user_data.get('amount', 'N/A')
-    # **FIXED**: Removed .replace(' ', '_')
     price = PRICES.get(platform, {}).get(service, {}).get(amount, 'N/A')
     user_input = context.user_data.get('user_input', 'N/A')
     
@@ -269,20 +253,32 @@ async def admin_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(chat_id=user_id, text=message_to_user)
         await query.edit_message_text(text=f"{query.message.text}\n\n--- \n🚫 ትዕዛዝ {order_id} ውድቅ ተደርጓል።")
 
-# --- ADDED: Back Button Handlers for Correct Navigation ---
+# --- Back Button Handlers for Correct Navigation ---
 
 async def back_to_service_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Navigates back to the service selection menu."""
+    """Navigates back to the service selection menu by reconstructing the previous state."""
+    platform = context.user_data.get('platform')
+    
+    # We need to fake the message text so platform_menu receives the platform name
+    if platform == 'telegram':
+        update.message.text = "🔵 Telegram"
+    elif platform == 'tiktok':
+        update.message.text = "⚫️ TikTok"
+    elif platform == 'instagram':
+        update.message.text = "🟣 Instagram"
+    elif platform == 'youtube':
+        update.message.text = "🔴 YouTube"
+    else:
+        return await start_bot(update, context) # Fallback
+        
     return await platform_menu(update, context)
 
 
 async def back_to_package_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Navigates back to the package selection menu."""
-    # We need to reconstruct the service text to pass to service_menu
+    """Navigates back to the package selection menu by reconstructing the previous state."""
     service = context.user_data.get('service')
     if service:
-        # A bit of a hack to reuse the service_menu function
-        # We find a button text that contains the service name
+        # We need to fake the message text so service_menu receives the service name
         service_map = {
             "reaction": "👍 Reaction", "post view": "👁 Post View", "subscribers": "👥 Subscribers",
             "followers": "👥 Followers", "like": "❤️ Like", "video view": "👁 Video View"
@@ -292,12 +288,12 @@ async def back_to_package_menu(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def back_to_awaiting_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Navigates back to the user input (link/username) prompt."""
-    # We need to reconstruct the package text to pass to package_menu
+    """Navigates back to the user input prompt by reconstructing the previous state."""
     service = context.user_data.get('service')
     amount = context.user_data.get('amount')
     platform = context.user_data.get('platform')
     if all([service, amount, platform]):
+         # We need to fake the message text so package_menu receives the package choice
         price = PRICES[platform][service][amount]
         update.message.text = f"{amount} {service.title()} | {price} ብር"
     return await package_menu(update, context)
@@ -309,11 +305,24 @@ def main() -> None:
         entry_points=[CommandHandler('start', start)],
         states={
             PLATFORM_MENU: [MessageHandler(filters.Regex("^(🔵 Telegram|⚫️ TikTok|🔴 YouTube|🟣 Instagram)$"), platform_menu)],
-            SERVICE_MENU: [MessageHandler(filters.Regex(f"^{BACK_BUTTON}$"), start_bot), MessageHandler(filters.TEXT & ~filters.COMMAND, service_menu)],
-            # **FIXED**: Back buttons now point to the correct previous state function
-            PACKAGE_MENU: [MessageHandler(filters.Regex(f"^{BACK_BUTTON}$"), back_to_service_menu), MessageHandler(filters.TEXT & ~filters.COMMAND, package_menu)],
-            AWAITING_INPUT: [MessageHandler(filters.Regex(f"^{BACK_BUTTON}$"), back_to_package_menu), MessageHandler(filters.TEXT & ~filters.COMMAND, awaiting_input)],
-            CONFIRMATION: [MessageHandler(filters.Regex(f"^{BACK_BUTTON}$"), back_to_awaiting_input), MessageHandler(filters.Regex("^✅ አረጋግጥ$"), confirmation)],
+            
+            # **FIXED**: Added a specific handler for the back button in every state for consistency and reliability.
+            SERVICE_MENU: [
+                MessageHandler(filters.Regex(f"^{BACK_BUTTON}$"), start_bot), 
+                MessageHandler(filters.TEXT & ~filters.COMMAND, service_menu)
+            ],
+            PACKAGE_MENU: [
+                MessageHandler(filters.Regex(f"^{BACK_BUTTON}$"), back_to_service_menu), 
+                MessageHandler(filters.TEXT & ~filters.COMMAND, package_menu)
+            ],
+            AWAITING_INPUT: [
+                MessageHandler(filters.Regex(f"^{BACK_BUTTON}$"), back_to_package_menu), 
+                MessageHandler(filters.TEXT & ~filters.COMMAND, awaiting_input)
+            ],
+            CONFIRMATION: [
+                MessageHandler(filters.Regex(f"^{BACK_BUTTON}$"), back_to_awaiting_input), 
+                MessageHandler(filters.Regex("^✅ አረጋግጥ$"), confirmation)
+            ],
             AWAITING_PROOF: [MessageHandler(filters.PHOTO | (filters.TEXT & ~filters.COMMAND), awaiting_proof)]
         },
         fallbacks=[CommandHandler('start', start)],
