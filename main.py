@@ -63,7 +63,8 @@ async def start_bot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         [KeyboardButton("🔵 Telegram"), KeyboardButton("⚫️ TikTok")],
         [KeyboardButton("🔴 YouTube"), KeyboardButton("🟣 Instagram")]
     ]
-    await update.message.reply_text(
+    message = update.message or update.callback_query.message
+    await message.reply_text(
         "👋 እንኳን በደህና መጡ!\n\nእባክዎ አገልግሎት የሚፈልጉበትን ፕላትፎርም ይምረጡ።",
         reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     )
@@ -87,8 +88,16 @@ async def check_subscription_callback(update: Update, context: ContextTypes.DEFA
     await query.answer()
     if await is_user_subscribed(query.from_user.id, context):
         await query.message.delete()
-        # Trigger the start command to begin the conversation flow
-        await start_bot(query, context)
+        # **FIXED**: Directly send the main menu to the user
+        keyboard = [
+            [KeyboardButton("🔵 Telegram"), KeyboardButton("⚫️ TikTok")],
+            [KeyboardButton("🔴 YouTube"), KeyboardButton("🟣 Instagram")]
+        ]
+        await context.bot.send_message(
+            chat_id=query.from_user.id,
+            text="👋 እንኳን በደህና መጡ!\n\nእባክዎ አገልግሎት የሚፈልጉበትን ፕላትፎርም ይምረጡ።",
+            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        )
         return PLATFORM_MENU
     else:
         await query.message.reply_text("🤔 አሁንም ቻናሉን አልተቀላቀሉም።")
@@ -110,7 +119,7 @@ async def platform_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         return PLATFORM_MENU
         
     await update.message.reply_text(f"✨ {platform.title()} выбрали.\n\nአሁን የሚፈልጉትን አገልግሎት ይምረጡ።",
-                                    reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
+                                     reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
     return SERVICE_MENU
 
 async def service_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -121,7 +130,8 @@ async def service_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     service = service_text.lower().replace('👍 ', '').replace('👁 ', '').replace('👥 ', '').replace('❤️ ', '')
     context.user_data['service'] = service
     platform = context.user_data['platform']
-    package_prices = PRICES.get(platform, {}).get(service.replace(' ', '_'), {})
+    # **FIXED**: Removed .replace(' ', '_') to correctly match keys like "post view"
+    package_prices = PRICES.get(platform, {}).get(service, {})
     
     if not package_prices:
         await update.message.reply_text("ይቅርታ, ለዚህ አገልግሎት ፓኬጆች በቅርቡ ይዘጋጃሉ።")
@@ -130,20 +140,18 @@ async def service_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     keyboard = [[KeyboardButton(f"{amount} {service.title()} | {price} ብር")] for amount, price in package_prices.items()]
     keyboard.append([KeyboardButton(BACK_BUTTON)])
     await update.message.reply_text(f"💖 {service_text} выбрали.\n\nየሚፈልጉትን ፓኬጅ ይምረጡ:",
-                                    reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True))
+                                     reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True))
     return PACKAGE_MENU
 
 async def package_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    if update.message.text == BACK_BUTTON:
-        return await platform_menu(update, context)
-
+    # This function is now only for forward navigation
     try:
         parts = update.message.text.split(' ')
         amount = parts[0]
-        # Ensure the selected amount is valid for the service
         service = context.user_data['service']
         platform = context.user_data['platform']
-        if amount not in PRICES[platform][service.replace(' ', '_')]:
+        # **FIXED**: Removed .replace(' ', '_')
+        if amount not in PRICES[platform][service]:
             raise ValueError("Invalid package selected")
         context.user_data['amount'] = amount
     except (IndexError, ValueError):
@@ -162,9 +170,7 @@ async def package_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     return AWAITING_INPUT
 
 async def awaiting_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    if update.message.text == BACK_BUTTON:
-        return await service_menu(update, context)
-
+    # This function is now only for forward navigation
     user_input = update.message.text
     platform = context.user_data['platform']
     
@@ -178,7 +184,8 @@ async def awaiting_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     context.user_data['user_input'] = user_input
     service = context.user_data['service']
     amount = context.user_data['amount']
-    price = PRICES[platform][service.replace(' ', '_')][amount]
+    # **FIXED**: Removed .replace(' ', '_')
+    price = PRICES[platform][service][amount]
     
     input_type = "Post ሊንክ" if platform == "telegram" else "Account"
     confirmation_text = (f"🔵 {platform.title()} | {service.title()}\n\n"
@@ -191,10 +198,12 @@ async def awaiting_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     return CONFIRMATION
 
 async def confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    if update.message.text == BACK_BUTTON:
-        return await package_menu(update, context)
+    if update.message.text != "✅ አረጋግጥ":
+        # If user didn't press confirm, assume it's a mistake and stay
+        return CONFIRMATION
         
-    price = PRICES[context.user_data['platform']][context.user_data['service'].replace(' ', '_')][context.user_data['amount']]
+    # **FIXED**: Removed .replace(' ', '_')
+    price = PRICES[context.user_data['platform']][context.user_data['service']][context.user_data['amount']]
     payment_info = (f"🏦 **የባንክ መረጃዎች**\n\n"
                     f"- **የባንክ ስም:** CBE\n"
                     f"- **ስልክ ቁጥር:** 0973961645\n"
@@ -220,7 +229,8 @@ async def awaiting_proof(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     platform = context.user_data.get('platform', 'N/A')
     service = context.user_data.get('service', 'N/A')
     amount = context.user_data.get('amount', 'N/A')
-    price = PRICES.get(platform, {}).get(service.replace(' ', '_'), {}).get(amount, 'N/A')
+    # **FIXED**: Removed .replace(' ', '_')
+    price = PRICES.get(platform, {}).get(service, {}).get(amount, 'N/A')
     user_input = context.user_data.get('user_input', 'N/A')
     
     admin_notification = (f"🔔 **አዲስ የክፍያ ማረጋገጫ** 🔔\n\n"
@@ -259,6 +269,39 @@ async def admin_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(chat_id=user_id, text=message_to_user)
         await query.edit_message_text(text=f"{query.message.text}\n\n--- \n🚫 ትዕዛዝ {order_id} ውድቅ ተደርጓል።")
 
+# --- ADDED: Back Button Handlers for Correct Navigation ---
+
+async def back_to_service_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Navigates back to the service selection menu."""
+    return await platform_menu(update, context)
+
+
+async def back_to_package_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Navigates back to the package selection menu."""
+    # We need to reconstruct the service text to pass to service_menu
+    service = context.user_data.get('service')
+    if service:
+        # A bit of a hack to reuse the service_menu function
+        # We find a button text that contains the service name
+        service_map = {
+            "reaction": "👍 Reaction", "post view": "👁 Post View", "subscribers": "👥 Subscribers",
+            "followers": "👥 Followers", "like": "❤️ Like", "video view": "👁 Video View"
+        }
+        update.message.text = service_map.get(service, service)
+    return await service_menu(update, context)
+
+
+async def back_to_awaiting_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Navigates back to the user input (link/username) prompt."""
+    # We need to reconstruct the package text to pass to package_menu
+    service = context.user_data.get('service')
+    amount = context.user_data.get('amount')
+    platform = context.user_data.get('platform')
+    if all([service, amount, platform]):
+        price = PRICES[platform][service][amount]
+        update.message.text = f"{amount} {service.title()} | {price} ብር"
+    return await package_menu(update, context)
+
 def main() -> None:
     application = Application.builder().token(BOT_TOKEN).build()
 
@@ -267,9 +310,10 @@ def main() -> None:
         states={
             PLATFORM_MENU: [MessageHandler(filters.Regex("^(🔵 Telegram|⚫️ TikTok|🔴 YouTube|🟣 Instagram)$"), platform_menu)],
             SERVICE_MENU: [MessageHandler(filters.Regex(f"^{BACK_BUTTON}$"), start_bot), MessageHandler(filters.TEXT & ~filters.COMMAND, service_menu)],
-            PACKAGE_MENU: [MessageHandler(filters.Regex(f"^{BACK_BUTTON}$"), platform_menu), MessageHandler(filters.TEXT & ~filters.COMMAND, package_menu)],
-            AWAITING_INPUT: [MessageHandler(filters.Regex(f"^{BACK_BUTTON}$"), service_menu), MessageHandler(filters.TEXT & ~filters.COMMAND, awaiting_input)],
-            CONFIRMATION: [MessageHandler(filters.Regex(f"^{BACK_BUTTON}$"), package_menu), MessageHandler(filters.TEXT & ~filters.COMMAND, confirmation)],
+            # **FIXED**: Back buttons now point to the correct previous state function
+            PACKAGE_MENU: [MessageHandler(filters.Regex(f"^{BACK_BUTTON}$"), back_to_service_menu), MessageHandler(filters.TEXT & ~filters.COMMAND, package_menu)],
+            AWAITING_INPUT: [MessageHandler(filters.Regex(f"^{BACK_BUTTON}$"), back_to_package_menu), MessageHandler(filters.TEXT & ~filters.COMMAND, awaiting_input)],
+            CONFIRMATION: [MessageHandler(filters.Regex(f"^{BACK_BUTTON}$"), back_to_awaiting_input), MessageHandler(filters.Regex("^✅ አረጋግጥ$"), confirmation)],
             AWAITING_PROOF: [MessageHandler(filters.PHOTO | (filters.TEXT & ~filters.COMMAND), awaiting_proof)]
         },
         fallbacks=[CommandHandler('start', start)],
