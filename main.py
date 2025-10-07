@@ -3,7 +3,7 @@
 import logging
 import os
 import random
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -54,8 +54,7 @@ async def is_user_subscribed(user_id: int, context: ContextTypes.DEFAULT_TYPE) -
     try:
         member = await context.bot.get_chat_member(chat_id=FORCE_SUB_CHANNEL, user_id=user_id)
         return member.status in ['member', 'administrator', 'creator']
-    except TelegramError as e:
-        logger.error(f"Error checking subscription for user {user_id}: {e}")
+    except TelegramError:
         return False
 
 # --- Start & Main Menu ---
@@ -72,18 +71,28 @@ async def start_bot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     
 # --- Main Conversation Flow ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    user_id = update.effective_user.id
-    if not await is_user_subscribed(user_id, context):
-        # The user will be handled by the check_subscription_callback
+    user = update.effective_user
+    if not await is_user_subscribed(user.id, context):
+        keyboard = [[InlineKeyboardButton("✅ ቻናሉን ይቀላቀሉ", url=f"https://t.me/{FORCE_SUB_CHANNEL.lstrip('@')}")],
+                    [InlineKeyboardButton("🔄 አረጋግጥ", callback_data="check_subscription")]]
+        await update.message.reply_text(
+            f"👋 እንኳን በደህና መጡ {user.mention_html()}!\n\nቦቱን ለመጠቀም እባክዎ መጀመሪያ ቻናላችንን ይቀላቀሉ።",
+            reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML'
+        )
         return ConversationHandler.END
     return await start_bot(update, context)
 
-async def check_subscription(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await is_user_subscribed(update.effective_user.id, context):
-        await update.message.reply_text("🤔 ቻናሉን አልተቀላቀሉም። እባክዎ መጀመሪያ ቻናሉን ይቀላቀሉ።")
+async def check_subscription_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    if await is_user_subscribed(query.from_user.id, context):
+        await query.message.delete()
+        # Trigger the start command to begin the conversation flow
+        await start_bot(query, context)
+        return PLATFORM_MENU
+    else:
+        await query.message.reply_text("🤔 አሁንም ቻናሉን አልተቀላቀሉም።")
         return ConversationHandler.END
-    # If they are subscribed, the conversation handler will take over.
-    return
 
 async def platform_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     platform = update.message.text.lower().replace('🔵 ', '').replace('⚫️ ', '').replace('🔴 ', '').replace('🟣 ', '')
@@ -95,13 +104,20 @@ async def platform_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         "instagram": [[KeyboardButton("👥 Followers"), KeyboardButton("❤️ Like")], [KeyboardButton(BACK_BUTTON)]],
         "youtube": [[KeyboardButton(BACK_BUTTON)]]
     }
-    keyboard = keyboards.get(platform, [[KeyboardButton(BACK_BUTTON)]])
+    keyboard = keyboards.get(platform)
+    if not keyboard:
+        await update.message.reply_text("ይህ አገልግሎት በቅርቡ ይጀመራል።")
+        return PLATFORM_MENU
+        
     await update.message.reply_text(f"✨ {platform.title()} выбрали.\n\nአሁን የሚፈልጉትን አገልግሎት ይምረጡ።",
                                     reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
     return SERVICE_MENU
 
 async def service_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     service_text = update.message.text
+    if service_text == BACK_BUTTON:
+        return await start_bot(update, context)
+
     service = service_text.lower().replace('👍 ', '').replace('👁 ', '').replace('👥 ', '').replace('❤️ ', '')
     context.user_data['service'] = service
     platform = context.user_data['platform']
@@ -118,38 +134,45 @@ async def service_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     return PACKAGE_MENU
 
 async def package_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if update.message.text == BACK_BUTTON:
+        return await platform_menu(update, context)
+
     try:
-        # Expected format: "500 Reaction | 50 ብር"
         parts = update.message.text.split(' ')
         amount = parts[0]
+        # Ensure the selected amount is valid for the service
+        service = context.user_data['service']
+        platform = context.user_data['platform']
+        if amount not in PRICES[platform][service.replace(' ', '_')]:
+            raise ValueError("Invalid package selected")
         context.user_data['amount'] = amount
     except (IndexError, ValueError):
         await update.message.reply_text("⚠️ የተሳሳተ ምርጫ። እባክዎ ከታች ካሉት ቁልፎች አንዱን ይምረጡ።")
         return PACKAGE_MENU
 
-    platform = context.user_data['platform']
-    
-    prompt = "የሚፈልጉትን ሊንክ ወይም Username ያስገቡ"
-    example = ""
+    prompt, example = "", ""
     if platform == "telegram":
-        prompt = f"🔗 {amount} {context.user_data['service'].title()} የሚጨመርበትን የTelegram Post link ያስገቡ❓"
+        prompt = f"🔗 {amount} {service.title()} የሚጨመርበትን የTelegram Post link ያስገቡ❓"
         example = "ለምሳሌ: https://t.me/channel_name/123"
     else:
-        prompt = f"🔗 {amount} {context.user_data['service'].title()} የሚጨመርበትን የ {platform.title()} Account username ያስገቡ❓"
+        prompt = f"🔗 {amount} {service.title()} የሚጨመርበትን የ {platform.title()} Account username ያስገቡ❓"
         example = "ለምሳሌ: @username"
     
-    await update.message.reply_text(f"{prompt}\n\n{example}", reply_markup=ReplyKeyboardRemove())
+    await update.message.reply_text(f"{prompt}\n\n{example}", reply_markup=ReplyKeyboardMarkup([[KeyboardButton(BACK_BUTTON)]], resize_keyboard=True))
     return AWAITING_INPUT
 
 async def awaiting_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if update.message.text == BACK_BUTTON:
+        return await service_menu(update, context)
+
     user_input = update.message.text
     platform = context.user_data['platform']
     
     if platform == 'telegram' and not user_input.startswith(('http://t.me/', 'https://t.me/')):
-        await update.message.reply_text("⚠️ ትክክለኛ የቴሌግራም ሊንክ አላስገቡም። ሊንኩ በ https://t.me/ መጀመር አለበት።\n\nእባክዎ እንደገና ይሞክሩ።", reply_markup=ReplyKeyboardRemove())
+        await update.message.reply_text("⚠️ ትክክለኛ የቴሌግራም ሊንክ አላስገቡም። ሊንኩ በ https://t.me/ መጀመር አለበት።\n\nእባክዎ እንደገና ይሞክሩ።")
         return AWAITING_INPUT
     if platform in ['tiktok', 'instagram'] and not user_input.startswith('@'):
-        await update.message.reply_text("⚠️ ትክክለኛ Username አላስገቡም። Username በ @ መጀመር አለበት።\n\nእባክዎ እንደገና ይሞክሩ።", reply_markup=ReplyKeyboardRemove())
+        await update.message.reply_text("⚠️ ትክክለኛ Username አላስገቡም። Username በ @ መጀመር አለበት።\n\nእባክዎ እንደገና ይሞክሩ።")
         return AWAITING_INPUT
 
     context.user_data['user_input'] = user_input
@@ -169,10 +192,7 @@ async def awaiting_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if update.message.text == BACK_BUTTON:
-        # Go back to service menu
-        platform = context.user_data['platform']
-        keyboards = {"telegram":...} # Re-show the service menu
-        return SERVICE_MENU
+        return await package_menu(update, context)
         
     price = PRICES[context.user_data['platform']][context.user_data['service'].replace(' ', '_')][context.user_data['amount']]
     payment_info = (f"🏦 **የባንክ መረጃዎች**\n\n"
@@ -197,7 +217,6 @@ async def awaiting_proof(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     # Send main menu again to the user
     await start_bot(update, context)
     
-    # Prepare info for admin
     platform = context.user_data.get('platform', 'N/A')
     service = context.user_data.get('service', 'N/A')
     amount = context.user_data.get('amount', 'N/A')
@@ -206,10 +225,12 @@ async def awaiting_proof(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     
     admin_notification = (f"🔔 **አዲስ የክፍያ ማረጋገጫ** 🔔\n\n"
                           f"👤 **ከ:** {user.mention_html()} (ID: `{user.id}`)\n"
-                          f"🆔 **የትዕዛዝ ቁጥር:** {order_id}\n...\n"
+                          f"🆔 **የትዕዛዝ ቁጥር:** {order_id}\n"
+                          f"--- ትዕዛዝ --- \n"
+                          f"📱 **አገልግሎት:** {platform.title()} - {service.title()}\n"
+                          f"🔢 **መጠን:** {amount}\n"
                           f"🔗 **ሊንክ/Username:** `{user_input}`\n"
-                          f"💵 **ክፍያ:** {price} ብር\n\n"
-                          "👇 ውሳኔዎን ይምረጡ።")
+                          f"💵 **ክፍያ:** {price} ብር")
 
     keyboard = [[InlineKeyboardButton("✅ ክፍያ ተረጋግጧል", callback_data=f"approve_{user.id}_{order_id}")],
                 [InlineKeyboardButton("🚫 ክፍያ አልተፈጸመም", callback_data=f"reject_{user.id}_{order_id}_{user.username or user.first_name}")]]
@@ -242,19 +263,20 @@ def main() -> None:
     application = Application.builder().token(BOT_TOKEN).build()
 
     conv_handler = ConversationHandler(
-        entry_points=[MessageHandler(filters.TEXT & ~filters.COMMAND, check_subscription), CommandHandler('start', start)],
+        entry_points=[CommandHandler('start', start)],
         states={
             PLATFORM_MENU: [MessageHandler(filters.Regex("^(🔵 Telegram|⚫️ TikTok|🔴 YouTube|🟣 Instagram)$"), platform_menu)],
             SERVICE_MENU: [MessageHandler(filters.Regex(f"^{BACK_BUTTON}$"), start_bot), MessageHandler(filters.TEXT & ~filters.COMMAND, service_menu)],
-            PACKAGE_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, package_menu)],
-            AWAITING_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, awaiting_input)],
-            CONFIRMATION: [MessageHandler(filters.TEXT & ~filters.COMMAND, confirmation)],
-            AWAITING_PROOF: [MessageHandler(filters.PHOTO | filters.TEXT & ~filters.COMMAND, awaiting_proof)]
+            PACKAGE_MENU: [MessageHandler(filters.Regex(f"^{BACK_BUTTON}$"), platform_menu), MessageHandler(filters.TEXT & ~filters.COMMAND, package_menu)],
+            AWAITING_INPUT: [MessageHandler(filters.Regex(f"^{BACK_BUTTON}$"), service_menu), MessageHandler(filters.TEXT & ~filters.COMMAND, awaiting_input)],
+            CONFIRMATION: [MessageHandler(filters.Regex(f"^{BACK_BUTTON}$"), package_menu), MessageHandler(filters.TEXT & ~filters.COMMAND, confirmation)],
+            AWAITING_PROOF: [MessageHandler(filters.PHOTO | (filters.TEXT & ~filters.COMMAND), awaiting_proof)]
         },
-        fallbacks=[CommandHandler('start', start_bot)],
+        fallbacks=[CommandHandler('start', start)],
     )
     
     application.add_handler(conv_handler)
+    application.add_handler(CallbackQueryHandler(check_subscription_callback, pattern="^check_subscription$"))
     application.add_handler(CallbackQueryHandler(admin_handler, pattern="^(approve_|reject_)"))
     
     application.run_polling()
