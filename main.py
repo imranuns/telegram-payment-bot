@@ -259,7 +259,6 @@ async def back_to_service_menu(update: Update, context: ContextTypes.DEFAULT_TYP
     """Navigates back to the service selection menu by reconstructing the previous state."""
     platform = context.user_data.get('platform')
     
-    # We need to fake the message text so platform_menu receives the platform name
     if platform == 'telegram':
         update.message.text = "🔵 Telegram"
     elif platform == 'tiktok':
@@ -278,7 +277,6 @@ async def back_to_package_menu(update: Update, context: ContextTypes.DEFAULT_TYP
     """Navigates back to the package selection menu by reconstructing the previous state."""
     service = context.user_data.get('service')
     if service:
-        # We need to fake the message text so service_menu receives the service name
         service_map = {
             "reaction": "👍 Reaction", "post view": "👁 Post View", "subscribers": "👥 Subscribers",
             "followers": "👥 Followers", "like": "❤️ Like", "video view": "👁 Video View"
@@ -293,7 +291,6 @@ async def back_to_awaiting_input(update: Update, context: ContextTypes.DEFAULT_T
     amount = context.user_data.get('amount')
     platform = context.user_data.get('platform')
     if all([service, amount, platform]):
-         # We need to fake the message text so package_menu receives the package choice
         price = PRICES[platform][service][amount]
         update.message.text = f"{amount} {service.title()} | {price} ብር"
     return await package_menu(update, context)
@@ -306,18 +303,19 @@ def main() -> None:
         states={
             PLATFORM_MENU: [MessageHandler(filters.Regex("^(🔵 Telegram|⚫️ TikTok|🔴 YouTube|🟣 Instagram)$"), platform_menu)],
             
-            # **FIXED**: Added a specific handler for the back button in every state for consistency and reliability.
+            # **FIXED**: The generic text handlers now explicitly IGNORE the back button text,
+            # ensuring the correct, specific handler for the back button is always used.
             SERVICE_MENU: [
                 MessageHandler(filters.Regex(f"^{BACK_BUTTON}$"), start_bot), 
-                MessageHandler(filters.TEXT & ~filters.COMMAND, service_menu)
+                MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex(f"^{BACK_BUTTON}$"), service_menu)
             ],
             PACKAGE_MENU: [
                 MessageHandler(filters.Regex(f"^{BACK_BUTTON}$"), back_to_service_menu), 
-                MessageHandler(filters.TEXT & ~filters.COMMAND, package_menu)
+                MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex(f"^{BACK_BUTTON}$"), package_menu)
             ],
             AWAITING_INPUT: [
                 MessageHandler(filters.Regex(f"^{BACK_BUTTON}$"), back_to_package_menu), 
-                MessageHandler(filters.TEXT & ~filters.COMMAND, awaiting_input)
+                MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex(f"^{BACK_BUTTON}$"), awaiting_input)
             ],
             CONFIRMATION: [
                 MessageHandler(filters.Regex(f"^{BACK_BUTTON}$"), back_to_awaiting_input), 
