@@ -25,7 +25,7 @@ ADMIN_CHAT_ID = os.environ.get("ADMIN_CHAT_ID")
 FORCE_SUB_CHANNEL = "@skyfounders"
 
 # --- Conversation States ---
-PLATFORM_MENU, SERVICE_MENU, PACKAGE_MENU, AWAITING_INPUT, CONFIRMATION, AWAITING_PROOF = range(6)
+CHECKING_SUB, PLATFORM_MENU, SERVICE_MENU, PACKAGE_MENU, AWAITING_INPUT, CONFIRMATION, AWAITING_PROOF = range(7)
 
 # --- Button Texts ---
 BACK_BUTTON = "◀️ ተመለስ"
@@ -80,7 +80,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             f"👋 እንኳን በደህና መጡ {user.mention_html()}!\n\nቦቱን ለመጠቀም እባክዎ መጀመሪያ ቻናላችንን ይቀላቀሉ።",
             reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML'
         )
-        return ConversationHandler.END
+        return CHECKING_SUB
     return await start_bot(update, context)
 
 async def check_subscription_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -92,15 +92,14 @@ async def check_subscription_callback(update: Update, context: ContextTypes.DEFA
             [KeyboardButton("🔵 Telegram"), KeyboardButton("⚫️ TikTok")],
             [KeyboardButton("🔴 YouTube"), KeyboardButton("🟣 Instagram")]
         ]
-        await context.bot.send_message(
-            chat_id=query.from_user.id,
-            text="👋 እንኳን በደህና መጡ!\n\nእባክዎ አገልግሎት የሚፈልጉበትን ፕላትፎርም ይምረጡ።",
+        await query.message.reply_text(
+            "👋 እንኳን በደህና መጡ!\n\nእባክዎ አገልግሎት የሚፈልጉበትን ፕላትፎርም ይምረጡ።",
             reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         )
         return PLATFORM_MENU
     else:
-        await query.message.reply_text("🤔 አሁንም ቻናሉን አልተቀላቀሉም።")
-        return ConversationHandler.END
+        await query.answer("🤔 አሁንም ቻናሉን አልተቀላቀሉም።", show_alert=True)
+        return CHECKING_SUB
 
 async def platform_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     platform = update.message.text.lower().replace('🔵 ', '').replace('⚫️ ', '').replace('🔴 ', '').replace('🟣 ', '')
@@ -333,6 +332,7 @@ def main() -> None:
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
+            CHECKING_SUB: [CallbackQueryHandler(check_subscription_callback, pattern="^check_subscription$")],
             PLATFORM_MENU: [MessageHandler(filters.Regex("^(🔵 Telegram|⚫️ TikTok|🔴 YouTube|🟣 Instagram)$"), platform_menu)],
             
             SERVICE_MENU: [
@@ -357,10 +357,10 @@ def main() -> None:
     )
     
     application.add_handler(conv_handler)
-    application.add_handler(CallbackQueryHandler(check_subscription_callback, pattern="^check_subscription$"))
     application.add_handler(CallbackQueryHandler(admin_handler, pattern="^(approve_|reject_)"))
     
     application.run_polling()
 
 if __name__ == "__main__":
     main()
+
