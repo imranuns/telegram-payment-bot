@@ -256,44 +256,71 @@ async def admin_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- Back Button Handlers for Correct Navigation ---
 
 async def back_to_service_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Navigates back to the service selection menu by reconstructing the previous state."""
+    """Navigates back to the service selection menu."""
     platform = context.user_data.get('platform')
-    
-    if platform == 'telegram':
-        update.message.text = "🔵 Telegram"
-    elif platform == 'tiktok':
-        update.message.text = "⚫️ TikTok"
-    elif platform == 'instagram':
-        update.message.text = "🟣 Instagram"
-    elif platform == 'youtube':
-        update.message.text = "🔴 YouTube"
-    else:
-        return await start_bot(update, context) # Fallback
+    if not platform:
+        return await start_bot(update, context)
+
+    keyboards = {
+        "telegram": [[KeyboardButton("👍 Reaction"), KeyboardButton("👁 Post View")], [KeyboardButton("👥 Subscribers"), KeyboardButton(BACK_BUTTON)]],
+        "tiktok": [[KeyboardButton("👥 Followers"), KeyboardButton("❤️ Like")], [KeyboardButton("👁 Video View"), KeyboardButton(BACK_BUTTON)]],
+        "instagram": [[KeyboardButton("👥 Followers"), KeyboardButton("❤️ Like")], [KeyboardButton(BACK_BUTTON)]],
+        "youtube": [[KeyboardButton(BACK_BUTTON)]]
+    }
+    keyboard = keyboards.get(platform)
+    if not keyboard:
+        return await start_bot(update, context)
         
-    return await platform_menu(update, context)
+    await update.message.reply_text(f"✨ {platform.title()} выбрали.\n\nአሁን የሚፈልጉትን አገልግሎት ይምረጡ።",
+                                     reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
+    return SERVICE_MENU
 
 
 async def back_to_package_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Navigates back to the package selection menu by reconstructing the previous state."""
+    """Navigates back to the package selection menu."""
+    platform = context.user_data.get('platform')
     service = context.user_data.get('service')
-    if service:
-        service_map = {
-            "reaction": "👍 Reaction", "post view": "👁 Post View", "subscribers": "👥 Subscribers",
-            "followers": "👥 Followers", "like": "❤️ Like", "video view": "👁 Video View"
-        }
-        update.message.text = service_map.get(service, service)
-    return await service_menu(update, context)
+
+    if not platform or not service:
+        return await start_bot(update, context)
+
+    package_prices = PRICES.get(platform, {}).get(service, {})
+    if not package_prices:
+        # This case should ideally not be hit if navigating back, but as a fallback:
+        return await back_to_service_menu(update, context)
+
+    service_map = {
+        "reaction": "👍 Reaction", "post view": "👁 Post View", "subscribers": "👥 Subscribers",
+        "followers": "👥 Followers", "like": "❤️ Like", "video view": "👁 Video View"
+    }
+    service_text = service_map.get(service, service.title())
+
+    keyboard = [[KeyboardButton(f"{amount} {service.title()} | {price} ብር")] for amount, price in package_prices.items()]
+    keyboard.append([KeyboardButton(BACK_BUTTON)])
+    await update.message.reply_text(f"💖 {service_text} выбрали.\n\nየሚፈልጉትን ፓኬጅ ይምረጡ:",
+                                     reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True))
+    return PACKAGE_MENU
 
 
 async def back_to_awaiting_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Navigates back to the user input prompt by reconstructing the previous state."""
+    """Navigates back to the user input prompt."""
+    platform = context.user_data.get('platform')
     service = context.user_data.get('service')
     amount = context.user_data.get('amount')
-    platform = context.user_data.get('platform')
-    if all([service, amount, platform]):
-        price = PRICES[platform][service][amount]
-        update.message.text = f"{amount} {service.title()} | {price} ብር"
-    return await package_menu(update, context)
+
+    if not all([platform, service, amount]):
+        return await start_bot(update, context)
+
+    prompt, example = "", ""
+    if platform == "telegram":
+        prompt = f"🔗 {amount} {service.title()} የሚጨመርበትን የTelegram Post link ያስገቡ❓"
+        example = "ለምሳሌ: https://t.me/channel_name/123"
+    else:
+        prompt = f"🔗 {amount} {service.title()} የሚጨመርበትን የ {platform.title()} Account username ያስገቡ❓"
+        example = "ለምሳሌ: @username"
+    
+    await update.message.reply_text(f"{prompt}\n\n{example}", reply_markup=ReplyKeyboardMarkup([[KeyboardButton(BACK_BUTTON)]], resize_keyboard=True))
+    return AWAITING_INPUT
 
 def main() -> None:
     application = Application.builder().token(BOT_TOKEN).build()
@@ -303,8 +330,6 @@ def main() -> None:
         states={
             PLATFORM_MENU: [MessageHandler(filters.Regex("^(🔵 Telegram|⚫️ TikTok|🔴 YouTube|🟣 Instagram)$"), platform_menu)],
             
-            # **FIXED**: The generic text handlers now explicitly IGNORE the back button text,
-            # ensuring the correct, specific handler for the back button is always used.
             SERVICE_MENU: [
                 MessageHandler(filters.Regex(f"^{BACK_BUTTON}$"), start_bot), 
                 MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.Regex(f"^{BACK_BUTTON}$"), service_menu)
