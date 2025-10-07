@@ -209,8 +209,7 @@ async def awaiting_proof(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                     f"❗️ትዕዛዝዎ እንደተጠናቀቀ የማረጋገጫ መልዕክት ይደርሶታል")
     await update.message.reply_text(user_message)
     
-    await start_bot(update, context)
-    
+    # Keep the user data to send to the admin
     platform = context.user_data.get('platform', 'N/A')
     service = context.user_data.get('service', 'N/A')
     amount = context.user_data.get('amount', 'N/A')
@@ -232,7 +231,13 @@ async def awaiting_proof(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await context.bot.forward_message(chat_id=ADMIN_CHAT_ID, from_chat_id=user.id, message_id=update.message.message_id)
     await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=admin_notification, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
     
-    return ConversationHandler.END
+    # CRITICAL: Clear the user_data for the next order
+    context.user_data.clear()
+
+    # Send the main menu and return the state to make the buttons work
+    await start_bot(update, context)
+    return PLATFORM_MENU
+
 
 async def admin_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
