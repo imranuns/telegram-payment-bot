@@ -132,7 +132,7 @@ async def platform_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     }
     keyboard = keyboards.get(platform)
         
-    await update.message.reply_text(f"✨ {platform.title()} выбрали.\n\nአሁን የሚፈልጉትን አገልግሎት ይምረጡ።",
+    await update.message.reply_text(f"✨ {platform.title()}\n\nአሁን የሚፈልጉትን አገልግሎት ይምረጡ።",
                                      reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
     return SERVICE_MENU
 
@@ -173,7 +173,7 @@ async def service_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 
     keyboard = [[KeyboardButton(f"{amount} {unit} | {price} ETB")] for amount, price in package_prices.items()]
     keyboard.append([KeyboardButton(BACK_BUTTON)])
-    await update.message.reply_text(f"💖 {service_text} выбрали.\n\nየሚፈልጉትን ፓኬጅ ይምረጡ:",
+    await update.message.reply_text(f"💖 {service_text}\n\nየሚፈልጉትን ፓኬጅ ይምረጡ:",
                                      reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True))
     return PACKAGE_MENU
 
@@ -366,7 +366,7 @@ async def back_to_service_menu(update: Update, context: ContextTypes.DEFAULT_TYP
         ],
     }
     keyboard = keyboards.get(platform)
-    await update.message.reply_text(f"✨ {platform.title()} выбрали.\n\nአሁን የሚፈልጉትን አገልግሎት ይምረጡ።",
+    await update.message.reply_text(f"✨ {platform.title()}\n\nአሁን የሚፈልጉትን አገልግሎት ይምረጡ።",
                                      reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
     return SERVICE_MENU
 
@@ -387,14 +387,51 @@ async def back_to_package_menu(update: Update, context: ContextTypes.DEFAULT_TYP
 
     keyboard = [[KeyboardButton(f"{amount} {unit} | {price} ETB")] for amount, price in package_prices.items()]
     keyboard.append([KeyboardButton(BACK_BUTTON)])
-    await update.message.reply_text(f"💖 {service_text} выбрали.\n\nየሚፈልጉትን ፓኬጅ ይምረጡ:",
+    await update.message.reply_text(f"💖 {service_text}\n\nየሚፈልጉትን ፓኬጅ ይምረጡ:",
                                      reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True))
     return PACKAGE_MENU
 
 
 async def back_to_awaiting_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    # This function regenerates the prompt for the link/username
-    return await package_menu(update, context)
+    prompt = ""
+    example = ""
+    platform = context.user_data.get('platform')
+    service = context.user_data.get('service')
+    service_text = context.user_data.get('service_text', 'Items')
+
+    if not platform or not service:
+        return await start_bot(update, context)
+
+    if platform == "telegram":
+        if service == "members":
+            prompt = "🔗 Public የሆነ የቻናል ሊንክ ይላኩ"
+            example = "ለምሳሌ:- https://t.me/skyFounders"
+        else:
+            prompt = f"🔗 {service_text} የሚጨመርበትን የTelegram Post link ያስገቡ❓"
+            example = "ለምሳሌ: https://t.me/channel_name/123"
+    elif platform == "tiktok":
+        if service == "followers":
+            prompt = "🔗 👥 Followers የሚጨመርበትን የ Tiktok Account username ያስገቡ❓"
+            example = "ለምሳሌ: @username"
+        elif service == "like":
+            prompt = "🔗 የ Tik Tok like የሚጨመርበትን የvideo link ያስገቡ❓"
+            example = "ለምሳሌ: https://vm.tiktok.com/..."
+        elif service == "video view":
+            prompt = "🔗 የTik Tok View የሚጨመርበትን የvideo link ያስገቡ❓"
+            example = "ለምሳሌ: https://vm.tiktok.com/..."
+    elif platform == "instagram":
+        if service == "followers":
+            prompt = "🔗 👥 Followers የሚጨመርበትን የ Instagram Account username ያስገቡ❓"
+            example = "ለምሳሌ: @username"
+        elif service == "like":
+            prompt = "🔗 የinstagram like የሚጨመርበትን የvideo link ያስገቡ❓"
+            example = "ለምሳሌ: https://www.instagram.com/p/..."
+        elif service == "views":
+            prompt = "🔗 የinstagram View የሚጨመርበትን የvideo link ያስገቡ❓"
+            example = "ለምሳሌ: https://www.instagram.com/p/..."
+    
+    await update.message.reply_text(f"{prompt}\n\n{example}", reply_markup=ReplyKeyboardMarkup([[KeyboardButton(BACK_BUTTON)]], resize_keyboard=True))
+    return AWAITING_INPUT
 
 
 def main() -> None:
