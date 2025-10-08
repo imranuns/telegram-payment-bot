@@ -435,12 +435,6 @@ async def back_to_awaiting_input(update: Update, context: ContextTypes.DEFAULT_T
 
 
 def main() -> None:
-    # --- TEMPORARY DEBUGGING ---
-    print("--- ENVIRONMENT VARIABLES ---")
-    for key, value in os.environ.items():
-        print(f"{key}: {value}")
-    print("---------------------------")
-    
     if not BOT_TOKEN or not ADMIN_CHAT_ID:
         logger.error("FATAL: BOT_TOKEN or ADMIN_CHAT_ID environment variable not set.")
         return
