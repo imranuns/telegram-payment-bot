@@ -279,9 +279,9 @@ async def awaiting_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def confirmation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     price = PRICES[context.user_data['platform']][context.user_data['service']][context.user_data['amount']]
     payment_info = (f"🏦 **የባንክ መረጃዎች**\n\n"
-                    f"- **የባንክ ስም:** CBE\n"
-                    f"- **ስልክ ቁጥር:** 0973961645\n"
-                    f"- **የአካውንት ስም:** Zerihun\n\n"
+                    f"- **የባንክ ስም:** Telebirr\n"
+                    f"- **ስልክ ቁጥር:** 0915243897\n"
+                    f"- **የአካውንት ስም:** Mohammed\n\n"
                     f"💰 **የሚከፍሉት የብር መጠን: {price} ETB**\n\n"
                     f"🧾 የክፍያ ማረጋገጫ የላኩበትን Screenshot ወይም የትራንዛክሽን መረጃ እዚህ ጋር ይላኩ።")
     await update.message.reply_text(payment_info, parse_mode='Markdown', reply_markup=ReplyKeyboardRemove())
@@ -477,3 +477,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
