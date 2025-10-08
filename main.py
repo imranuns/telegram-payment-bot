@@ -166,14 +166,10 @@ async def service_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         return SERVICE_MENU
     
     unit = "Items" # Default
-    if "reaction" in service:
-        unit = "Reactions"
-    elif "view" in service:
-        unit = "Views"
-    elif service in ["members", "followers"]:
-        unit = service.title()
-    elif service == "like":
-        unit = "Likes"
+    if "reaction" in service: unit = "Reactions"
+    elif "view" in service: unit = "Views"
+    elif service in ["members", "followers"]: unit = service.title()
+    elif service == "like": unit = "Likes"
 
     keyboard = [[KeyboardButton(f"{amount} {unit} | {price} ETB")] for amount, price in package_prices.items()]
     keyboard.append([KeyboardButton(BACK_BUTTON)])
@@ -194,14 +190,38 @@ async def package_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         await update.message.reply_text("⚠️ የተሳሳተ ምርጫ። እባክዎ ከታች ካሉት ቁልፎች አንዱን ይምረጡ።")
         return PACKAGE_MENU
 
+    # --- Custom Prompts Logic ---
+    prompt = ""
+    example = ""
     service_text = context.user_data.get('service_text', 'Items')
-    prompt, example = "", ""
+
     if platform == "telegram":
-        prompt = f"🔗 {service_text} የሚጨመርበትን የTelegram Post link ያስገቡ❓"
-        example = "ለምሳሌ: https://t.me/channel_name/123"
-    else: #tiktok, instagram
-        prompt = f"🔗 {service_text} የሚጨመርበትን የ {platform.title()} Account username ያስገቡ❓"
-        example = "ለምሳሌ: @username"
+        if service == "members":
+            prompt = "🔗 Public የሆነ የቻናል ሊንክ ይላኩ"
+            example = "ለምሳሌ:- https://t.me/skyFounders"
+        else:
+            prompt = f"🔗 {service_text} የሚጨመርበትን የTelegram Post link ያስገቡ❓"
+            example = "ለምሳሌ: https://t.me/channel_name/123"
+    elif platform == "tiktok":
+        if service == "followers":
+            prompt = "🔗 👥 Followers የሚጨመርበትን የ Tiktok Account username ያስገቡ❓"
+            example = "ለምሳሌ: @username"
+        elif service == "like":
+            prompt = "🔗 የ Tik Tok like የሚጨመርበትን የvideo link ያስገቡ❓"
+            example = "ለምሳሌ: https://vm.tiktok.com/..."
+        elif service == "video view":
+            prompt = "🔗 የTik Tok View የሚጨመርበትን የvideo link ያስገቡ❓"
+            example = "ለምሳሌ: https://vm.tiktok.com/..."
+    elif platform == "instagram":
+        if service == "followers":
+            prompt = "🔗 👥 Followers የሚጨመርበትን የ Instagram Account username ያስገቡ❓"
+            example = "ለምሳሌ: @username"
+        elif service == "like":
+            prompt = "🔗 የinstagram like የሚጨመርበትን የvideo link ያስገቡ❓"
+            example = "ለምሳሌ: https://www.instagram.com/p/..."
+        elif service == "views":
+            prompt = "🔗 የinstagram View የሚጨመርበትን የvideo link ያስገቡ❓"
+            example = "ለምሳሌ: https://www.instagram.com/p/..."
     
     await update.message.reply_text(f"{prompt}\n\n{example}", reply_markup=ReplyKeyboardMarkup([[KeyboardButton(BACK_BUTTON)]], resize_keyboard=True))
     return AWAITING_INPUT
@@ -209,21 +229,44 @@ async def package_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 async def awaiting_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user_input = update.message.text
     platform = context.user_data['platform']
+    service = context.user_data['service']
     
-    if platform == 'telegram' and not user_input.startswith(('http://t.me/', 'https://t.me/')):
-        await update.message.reply_text("⚠️ ትክክለኛ የቴሌግራም ሊንክ አላስገቡም። ሊንኩ በ https://t.me/ መጀመር አለበት።\n\nእባክዎ እንደገና ይሞክሩ።")
-        return AWAITING_INPUT
-    if platform in ['tiktok', 'instagram'] and not user_input.startswith('@'):
-        await update.message.reply_text("⚠️ ትክክለኛ Username አላስገቡም። Username በ @ መጀመር አለበት።\n\nእባክዎ እንደገና ይሞክሩ።")
+    error_message = ""
+
+    # --- Validation Logic ---
+    if platform == 'telegram':
+        if not user_input.startswith(('http://t.me/', 'https://t.me/')):
+            error_message = "⚠️ ትክክለኛ የቴሌግራም ሊንክ አላስገቡም። ሊንኩ በ https://t.me/ መጀመር አለበት።\n\nእባክዎ እንደገና ይሞክሩ።"
+    
+    elif platform == 'tiktok':
+        if service == 'followers':
+            if not user_input.startswith('@'):
+                error_message = "⚠️ ትክክለኛ Username አላስገቡም። Username በ @ መጀመር አለበት።\n\nእባክዎ እንደገና ይሞክሩ።"
+        elif service in ['like', 'video view']:
+            if not user_input.startswith(('https://www.tiktok.com/', 'https://vm.tiktok.com/')):
+                error_message = "⚠️ ትክክለኛ የTikTok ሊንክ አላስገቡም። ሊንኩ በ https://vm.tiktok.com/ ወይም https://www.tiktok.com/ መጀመር አለበት።\n\nእባክዎ እንደገና ይሞክሩ።"
+
+    elif platform == 'instagram':
+        if service == 'followers':
+            if not user_input.startswith('@'):
+                error_message = "⚠️ ትክክለኛ Username አላስገቡም። Username በ @ መጀመር አለበት።\n\nእባክዎ እንደገና ይሞክሩ።"
+        elif service in ['like', 'views']:
+            if not user_input.startswith('https://www.instagram.com/'):
+                error_message = "⚠️ ትክክለኛ የInstagram ሊንክ አላስገቡም። ሊንኩ በ https://www.instagram.com/ መጀመር አለበት።\n\nእባክዎ እንደገና ይሞክሩ።"
+
+    if error_message:
+        await update.message.reply_text(error_message)
         return AWAITING_INPUT
 
+    # --- If valid, continue ---
     context.user_data['user_input'] = user_input
-    service = context.user_data['service']
     amount = context.user_data['amount']
     price = PRICES[platform][service][amount]
     service_text = context.user_data.get('service_text', service.title())
     
-    input_type = "Post ሊንክ" if platform == "telegram" else "Account"
+    input_type = "Post ሊንክ" if service != 'followers' else "Account"
+    if platform == 'telegram' and service == 'members': input_type = "ቻናል ሊንክ"
+
     confirmation_text = (f"🔵 {platform.title()} | {service_text}\n\n"
                          f"👤 መጠን: {amount}\n"
                          f"🔗 {input_type}: {user_input}\n"
@@ -350,20 +393,8 @@ async def back_to_package_menu(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def back_to_awaiting_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    service_text = context.user_data.get('service_text', 'Items')
-    platform = context.user_data.get('platform')
-    if not all([service_text, platform]): return await start_bot(update, context)
-    
-    prompt, example = "", ""
-    if platform == "telegram":
-        prompt = f"🔗 {service_text} የሚጨመርበትን የTelegram Post link ያስገቡ❓"
-        example = "ለምሳሌ: https://t.me/channel_name/123"
-    else: #tiktok, instagram
-        prompt = f"🔗 {service_text} የሚጨመርበትን የ {platform.title()} Account username ያስገቡ❓"
-        example = "ለምሳሌ: @username"
-    
-    await update.message.reply_text(f"{prompt}\n\n{example}", reply_markup=ReplyKeyboardMarkup([[KeyboardButton(BACK_BUTTON)]], resize_keyboard=True))
-    return AWAITING_INPUT
+    # This function regenerates the prompt for the link/username
+    return await package_menu(update, context)
 
 
 def main() -> None:
