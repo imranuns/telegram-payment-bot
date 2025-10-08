@@ -107,6 +107,11 @@ async def check_subscription_callback(update: Update, context: ContextTypes.DEFA
 
 async def platform_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     platform = update.message.text.lower().replace('🔵 ', '').replace('⚫️ ', '').replace('🔴 ', '').replace('🟣 ', '')
+    
+    if platform == "youtube":
+        await update.message.reply_text("ይህ አገልግሎት በቅርቡ ይጀመራል። እባክዎ ሌላ ፕላትፎርም ይምረጡ።")
+        return PLATFORM_MENU
+
     context.user_data['platform'] = platform
     
     keyboards = {
@@ -124,12 +129,8 @@ async def platform_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
             [KeyboardButton("👥 Followers"), KeyboardButton("❤️ Likes")],
             [KeyboardButton("👁 Views"), KeyboardButton(BACK_BUTTON), KeyboardButton(MAIN_EXIT_BUTTON)]
         ],
-        "youtube": [[KeyboardButton(BACK_BUTTON), KeyboardButton(MAIN_EXIT_BUTTON)]]
     }
     keyboard = keyboards.get(platform)
-    if not keyboard:
-        await update.message.reply_text("ይህ አገልግሎት በቅርቡ ይጀመራል።")
-        return PLATFORM_MENU
         
     await update.message.reply_text(f"✨ {platform.title()} выбрали.\n\nአሁን የሚፈልጉትን አገልግሎት ይምረጡ።",
                                      reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
@@ -275,10 +276,8 @@ async def awaiting_proof(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await context.bot.forward_message(chat_id=ADMIN_CHAT_ID, from_chat_id=user.id, message_id=update.message.message_id)
     await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=admin_notification, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
     
-    context.user_data.clear()
     await start_bot(update, context)
-    return ConversationHandler.END
-
+    return PLATFORM_MENU # Important: Return to a state in the conversation
 
 async def admin_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -304,13 +303,67 @@ async def back_to_platform_menu(update: Update, context: ContextTypes.DEFAULT_TY
     return await start_bot(update, context)
 
 async def back_to_service_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    return await platform_menu(update, context)
+    platform = context.user_data.get('platform')
+    if not platform: return await start_bot(update, context)
+    
+    keyboards = {
+        "telegram": [
+            [KeyboardButton("👍 Reaction"), KeyboardButton("🤣 reaction"), KeyboardButton("❤️ reaction")],
+            [KeyboardButton("👁 Post View"), KeyboardButton("👁 5 last Posts")],
+            [KeyboardButton("👥 members")],
+            [KeyboardButton(BACK_BUTTON), KeyboardButton(MAIN_EXIT_BUTTON)]
+        ],
+        "tiktok": [
+            [KeyboardButton("👥 Followers"), KeyboardButton("❤️ Likes")],
+            [KeyboardButton("👁 Video Views"), KeyboardButton(BACK_BUTTON), KeyboardButton(MAIN_EXIT_BUTTON)]
+        ],
+        "instagram": [
+            [KeyboardButton("👥 Followers"), KeyboardButton("❤️ Likes")],
+            [KeyboardButton("👁 Views"), KeyboardButton(BACK_BUTTON), KeyboardButton(MAIN_EXIT_BUTTON)]
+        ],
+    }
+    keyboard = keyboards.get(platform)
+    await update.message.reply_text(f"✨ {platform.title()} выбрали.\n\nአሁን የሚፈልጉትን አገልግሎት ይምረጡ።",
+                                     reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
+    return SERVICE_MENU
+
 
 async def back_to_package_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    return await service_menu(update, context)
+    service_text = context.user_data.get('service_text')
+    service = context.user_data.get('service')
+    platform = context.user_data.get('platform')
+    if not all([service_text, service, platform]): return await start_bot(update, context)
+    
+    package_prices = PRICES.get(platform, {}).get(service, {})
+    
+    unit = "Items" # Default
+    if "reaction" in service: unit = "Reactions"
+    elif "view" in service: unit = "Views"
+    elif service in ["members", "followers"]: unit = service.title()
+    elif service == "like": unit = "Likes"
+
+    keyboard = [[KeyboardButton(f"{amount} {unit} | {price} ETB")] for amount, price in package_prices.items()]
+    keyboard.append([KeyboardButton(BACK_BUTTON)])
+    await update.message.reply_text(f"💖 {service_text} выбрали.\n\nየሚፈልጉትን ፓኬጅ ይምረጡ:",
+                                     reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True))
+    return PACKAGE_MENU
+
 
 async def back_to_awaiting_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    return await package_menu(update, context)
+    service_text = context.user_data.get('service_text', 'Items')
+    platform = context.user_data.get('platform')
+    if not all([service_text, platform]): return await start_bot(update, context)
+    
+    prompt, example = "", ""
+    if platform == "telegram":
+        prompt = f"🔗 {service_text} የሚጨመርበትን የTelegram Post link ያስገቡ❓"
+        example = "ለምሳሌ: https://t.me/channel_name/123"
+    else: #tiktok, instagram
+        prompt = f"🔗 {service_text} የሚጨመርበትን የ {platform.title()} Account username ያስገቡ❓"
+        example = "ለምሳሌ: @username"
+    
+    await update.message.reply_text(f"{prompt}\n\n{example}", reply_markup=ReplyKeyboardMarkup([[KeyboardButton(BACK_BUTTON)]], resize_keyboard=True))
+    return AWAITING_INPUT
 
 
 def main() -> None:
